@@ -7,6 +7,7 @@ export default function Home() {
   const [articles, setArticles] = useState([])
   const [category, setCategory] = useState('general')
   const [loading, setLoading] = useState(false)
+  const [slowLoad, setSlowLoad] = useState(false)
 
   useEffect(() => {
     let intervalId;
@@ -14,7 +15,12 @@ export default function Home() {
     const fetchNews = async (isBackground = false) => {
       // Only show the loading text on the very first initial load
       if (!isBackground) setLoading(true)
-      
+
+      // If it takes more than 5s, show a "waking up server" hint
+      const slowTimer = !isBackground
+        ? setTimeout(() => setSlowLoad(true), 5000)
+        : null
+
       try {
         const data = await getNewsByCategory(category)
         if (data) {
@@ -23,7 +29,11 @@ export default function Home() {
       } catch (err) {
         console.error("Error fetching news:", err)
       } finally {
-        if (!isBackground) setLoading(false)
+        if (!isBackground) {
+          clearTimeout(slowTimer)
+          setLoading(false)
+          setSlowLoad(false)
+        }
       }
     }
 
@@ -65,6 +75,11 @@ export default function Home() {
         <div className="flex flex-col items-center justify-center py-20 opacity-70">
           <div className="w-12 h-12 border-4 border-slate-700 border-t-brand-500 rounded-full animate-spin mb-4"></div>
           <p className="text-slate-400 animate-pulse font-medium">Curating your feed...</p>
+          {slowLoad && (
+            <p className="text-slate-500 text-sm mt-2">
+              ⏳ Server is waking up — this can take up to 60s on first load
+            </p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

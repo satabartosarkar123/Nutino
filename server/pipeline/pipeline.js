@@ -71,7 +71,66 @@ export async function ingestArticle(content, metadata = {}) {
 const GEMINI_MODEL = 'gemini-2.0-flash'
 const MAX_RETRIES = 1
 
-async function callGemini(content) {
+// ─── Persona-Aware Prompt Builder ─────────────────────────────────────────────
+
+/**
+ * Construct a dynamic summarization prompt based on the user's
+ * analytical persona profile. Falls back to a generic 3-bullet
+ * prompt when no profile is available.
+ *
+ * @param {string} content   - The raw article text.
+ * @param {object|null} userProfile - The user's profile subdocument.
+ * @returns {string} The complete prompt string for the LLM.
+ */
+function buildPersonaPrompt(content, userProfile) {
+    // Default prompt when no user profile exists
+    if (!userProfile || !userProfile.persona) {
+        return `Summarize the following article in 3 bullet points:\n${content}`;
+    }
+
+    // Map summary_depth to concrete prompt directives
+    const depthDirectives = {
+        bullet_points:
+            'Summarize the article in 3-5 concise bullet points. Each bullet should capture a single key fact or takeaway.',
+        deep_analysis:
+            'Provide a comprehensive analysis of the article with supporting context, relevant data points, and downstream implications. Structure the response with clear section headings.',
+        exec_summary:
+            'Write a tight executive summary (2-3 paragraphs) suitable for a C-suite briefing. Lead with the most actionable insight.',
+    };
+
+    const depthInstruction =
+        depthDirectives[userProfile.summary_depth] ||
+        depthDirectives.bullet_points;
+
+    // Build the persona context block
+    let personaBlock = `The reader is a ${userProfile.persona}. Tailor the language, technical depth, and analytical focus to match this persona.`;
+
+    // Emphasize primary interests
+    if (
+        Array.isArray(userProfile.primary_interests) &&
+        userProfile.primary_interests.length > 0
+    ) {
+        personaBlock += `\nThe reader is particularly interested in: ${userProfile.primary_interests.join(', ')}. When the article touches on these areas, expand coverage and provide additional context.`;
+    }
+
+    // De-emphasize ignored topics
+    if (
+        Array.isArray(userProfile.ignored_topics) &&
+        userProfile.ignored_topics.length > 0
+    ) {
+        personaBlock += `\nThe reader has indicated low interest in: ${userProfile.ignored_topics.join(', ')}. Minimize coverage of these areas unless they are central to the article's thesis.`;
+    }
+
+    return [
+        '--- SYSTEM INSTRUCTIONS ---',
+        depthInstruction,
+        personaBlock,
+        '--- ARTICLE CONTENT ---',
+        content,
+    ].join('\n\n');
+}
+
+async function callGemini(prompt) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is not set in environment variables')
@@ -84,7 +143,7 @@ async function callGemini(content) {
       {
         parts: [
           {
-            text: `Summarize the following article in 3 bullet points:\n${content}`,
+            text: prompt,
           },
         ],
       },
@@ -99,7 +158,7 @@ async function callGemini(content) {
   return text
 }
 
-async function callGroq(content) {
+async function callGroq(prompt) {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
     throw new Error('GROQ_API_KEY is not set in environment variables')
@@ -112,7 +171,7 @@ async function callGroq(content) {
       messages: [
         {
           role: 'user',
-          content: `Summarize the following article in 3 bullet points:\n${content}`,
+          content: prompt,
         },
       ],
     },
@@ -132,10 +191,17 @@ async function callGroq(content) {
   return text
 }
 
-export async function summarizeArticle(content) {
-  logSummarize('Summarization started', { contentLength: content.length })
+export async function summarizeArticle(content, userProfile = null) {
+  logSummarize('Summarization started', {
+    contentLength: content.length,
+    persona: userProfile?.persona || 'anonymous',
+    depth: userProfile?.summary_depth || 'default',
+  })
   const startTime = Date.now()
   let lastError = null
+
+  // Build the prompt once — reused across retries and fallback
+  const prompt = buildPersonaPrompt(content, userProfile)
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -143,7 +209,7 @@ export async function summarizeArticle(content) {
         logSummarize(`Retry attempt ${attempt}/${MAX_RETRIES}`)
       }
 
-      const summary = await callGemini(content)
+      const summary = await callGemini(prompt)
       const processingTime = `${Date.now() - startTime}ms`
 
       logSummarize('Summarization successful (via Gemini)', { processingTime })
@@ -167,7 +233,7 @@ export async function summarizeArticle(content) {
   // Gemini exhausted, try Groq fallback
   logSummarize('Gemini exhausted, attempting Groq fallback...')
   try {
-    const summary = await callGroq(content)
+    const summary = await callGroq(prompt)
     const processingTime = `${Date.now() - startTime}ms`
 
     logSummarize('Summarization successful (via Groq fallback)', { processingTime })

@@ -135,7 +135,7 @@ C4Component
 
 ### News APIs
 - **`GET /api/news/top-headlines?category=business&page=1`**
-  - **Auth:** Optional
+  - **Auth:** Oaptional
   - **Response:** `{ "articles": [{ "title": "...", "url": "...", "source": "..." }] }`
 - **`POST /api/news/summarize`**
   - **Auth:** Required (Bearer Token)

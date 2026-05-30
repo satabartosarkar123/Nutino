@@ -5,6 +5,8 @@ import connectDB from './db.js'
 import summaryRoutes from './routes/summaryRoutes.js'
 import newsRoutes from './routes/newsRoutes.js'
 import summarizeRoutes from './routes/summarizeRoutes.js'
+import authRoutes from './routes/authRoutes.js'
+import userRoutes from './routes/userRoutes.js'
 import { logPipeline } from './pipeline/logger.js'
 
 // Load env variables first
@@ -26,7 +28,11 @@ logPipeline('Server starting...')
 // Connect to MongoDB
 connectDB()
 
-// Routes
+// Routes — Auth & User (new)
+app.use('/api/auth', authRoutes)
+app.use('/api/user', userRoutes)
+
+// Routes — Existing pipeline
 app.use('/api/summaries', summaryRoutes)
 app.use('/api/news', newsRoutes)
 app.use('/api/summarize', summarizeRoutes)
@@ -34,6 +40,11 @@ app.use('/api/summarize', summarizeRoutes)
 // Optional test route
 app.get('/', (req, res) => {
   res.send('✅ Backend is up and running!')
+})
+
+// Health check for Render uptime monitoring
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 // Listen on assigned port (important for Render)

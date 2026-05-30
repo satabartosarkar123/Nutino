@@ -26,8 +26,9 @@ export const summarizeSingle = async (req, res) => {
       })
     }
 
-    // Stage 2: Summarize
-    const summaryResult = await summarizeArticle(ingestionResult.data.content)
+    // Stage 2: Summarize (persona-aware when user is authenticated)
+    const userProfile = req.user?.profile || null
+    const summaryResult = await summarizeArticle(ingestionResult.data.content, userProfile)
     if (summaryResult.status === 'error') {
       return res.status(502).json({
         status: 'error',
@@ -111,8 +112,9 @@ export const summarizeBatch = async (req, res) => {
           return { status: 'error', message: ingestionResult.message, index }
         }
 
-        // Stage 2: Summarize
-        const summaryResult = await summarizeArticle(ingestionResult.data.content)
+        // Stage 2: Summarize (persona-aware when user is authenticated)
+        const userProfile = req.user?.profile || null
+        const summaryResult = await summarizeArticle(ingestionResult.data.content, userProfile)
         if (summaryResult.status === 'error') {
           return { status: 'error', message: summaryResult.message, index }
         }
